@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Organizer — QR Event Check-In</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #F4F5F7; margin: 0; padding: 30px; color: #1B2A44; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 10px; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 20px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; margin-top: 14px; }
+  input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+  button { margin-top: 18px; background: #1B2A44; color: #fff; border: none; padding: 11px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  button:hover { opacity: 0.9; }
+  select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+  .qr-box { text-align: center; margin-top: 16px; }
+  .qr-box img { border: 1px solid #eee; border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13.5px; }
+  th { text-align: left; padding: 8px; border-bottom: 2px solid #eee; color: #777; font-size: 12px; text-transform: uppercase; }
+  td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+  .muted { color: #888; font-size: 13px; }
+  .count { font-size: 28px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Organizer dashboard</h1>
+
+  <div class="card">
+    <h3>Create a new event</h3>
+    <label>Event name</label>
+    <input id="eventName" placeholder="e.g. TechFest 2026">
+    <label>Event date & time</label>
+    <input id="eventDate" type="datetime-local">
+    <button onclick="handleCreateEvent()">Create event & generate QR</button>
+  </div>
+
+  <div class="card">
+    <h3>Select event</h3>
+    <select id="eventSelect" onchange="loadEvent()">
+      <option value="">— choose an event —</option>
+    </select>
+
+    <div id="eventDetails" style="display:none;">
+      <div class="qr-box">
+        <img id="qrImg" width="220" height="220">
+        <p class="muted">Attendees scan this with their phone camera to check in.</p>
+      </div>
+
+      <p class="count"><span id="checkinCount">0</span> <span class="muted" style="font-size:14px;">checked in</span></p>
+
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Checked in at</th></tr></thead>
+        <tbody id="checkinRows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentEventId = null;
+
+  async function loadEvents() {
+    const res = await fetch('/api/events');
+    const events = await res.json();
+    const select = document.getElementById('eventSelect');
+    select.innerHTML = '<option value="">— choose an event —</option>';
+    events.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.name;
+      select.appendChild(opt);
+    });
+  }
+
+  async function handleCreateEvent() {
+    const name = document.getElementById('eventName').value.trim();
+    const dateVal = document.getElementById('eventDate').value;
+    if (!name || !dateVal) { alert('Enter event name and date'); return; }
+
+    const isoDate = new Date(dateVal).toISOString();
+    const res = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, eventDate: isoDate })
+    });
+    if (!res.ok) { alert('Could not create event'); return; }
+    const event = await res.json();
+    document.getElementById('eventName').value = '';
+    document.getElementById('eventDate').value = '';
+    await loadEvents();
+    document.getElementById('eventSelect').value = event.id;
+    await loadEvent();
+  }
+
+  async function loadEvent() {
+    const id = document.getElementById('eventSelect').value;
+    if (!id) { document.getElementById('eventDetails').style.display = 'none'; return; }
+    currentEventId = id;
+    document.getElementById('eventDetails').style.display = 'block';
+    document.getElementById('qrImg').src = `/api/events/${id}/qrcode?t=${Date.now()}`;
+    await refreshCheckIns();
+  }
+
+  async function refreshCheckIns() {
+    if (!currentEventId) return;
+    const res = await fetch(`/api/events/${currentEventId}/checkins`);
+    const checkIns = await res.json();
+    document.getElementById('checkinCount').textContent = checkIns.length;
+    const rows = checkIns.map(c => `
+      <tr>
+        <td>${escapeHtml(c.attendeeName)}</td>
+        <td>${escapeHtml(c.attendeeEmail)}</td>
+        <td class="muted">${new Date(c.checkedInAt).toLocaleString()}</td>
+      </tr>
+    `).join('');
+    document.getElementById('checkinRows').innerHTML = rows || '<tr><td colspan="3" class="muted">No check-ins yet</td></tr>';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Poll for new check-ins every 5s while an event is selected
+  setInterval(() => { if (currentEventId) refreshCheckIns(); }, 5000);
+
+  loadEvents();
+</script>
+</body>
+</html>

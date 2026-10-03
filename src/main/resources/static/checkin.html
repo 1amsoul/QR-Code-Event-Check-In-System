@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Check-In</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #F4F5F7; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+  .card { background: #fff; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); max-width: 360px; width: 100%; }
+  h1 { font-size: 20px; margin-bottom: 4px; color: #1B2A44; }
+  p.sub { color: #777; font-size: 13.5px; margin-bottom: 20px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; margin-top: 14px; }
+  input { width: 100%; padding: 11px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+  button { margin-top: 20px; width: 100%; background: #1B2A44; color: #fff; border: none; padding: 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  button:hover { opacity: 0.9; }
+  .msg { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 13.5px; display: none; }
+  .msg.success { background: #E4EEE7; color: #2F6B4F; display: block; }
+  .msg.error { background: #F3E4DF; color: #A8432F; display: block; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Event check-in</h1>
+    <p class="sub">Enter your details to mark your attendance.</p>
+
+    <label>Full name</label>
+    <input id="name" placeholder="Jane Doe">
+    <label>Email</label>
+    <input id="email" type="email" placeholder="jane@university.edu">
+
+    <button onclick="submitCheckIn()">Check in</button>
+    <div id="msg" class="msg"></div>
+  </div>
+
+<script>
+  function getToken() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('token');
+  }
+
+  async function submitCheckIn() {
+    const token = getToken();
+    const msg = document.getElementById('msg');
+    if (!token) {
+      msg.className = 'msg error';
+      msg.textContent = 'Missing QR token — please scan the event QR code again.';
+      return;
+    }
+    const attendeeName = document.getElementById('name').value.trim();
+    const attendeeEmail = document.getElementById('email').value.trim();
+    if (!attendeeName || !attendeeEmail) {
+      msg.className = 'msg error';
+      msg.textContent = 'Please enter both your name and email.';
+      return;
+    }
+
+    const res = await fetch('/api/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, attendeeName, attendeeEmail })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      msg.className = 'msg success';
+      msg.textContent = `You're checked in to "${data.eventName}". See you there!`;
+    } else {
+      msg.className = 'msg error';
+      msg.textContent = data.message || 'Check-in failed.';
+    }
+  }
+</script>
+</body>
+</html>
